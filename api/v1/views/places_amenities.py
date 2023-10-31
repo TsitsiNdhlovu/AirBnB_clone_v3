@@ -1,57 +1,74 @@
 #!/usr/bin/python3
-"""Places Amenities view module."""
-from api.v1.views import app_views
-from flask import Flask, request, jsonify, abort
-# Import your models and storage instance here
+"""the new view for the link between Place objects and Amenity objects"""
 from models.place import Place
 from models.amenity import Amenity
+from api.v1.views import app_views
 from models import storage
+from os import getenv
+from flask import jsonify, abort
+from flasgger.utils import swag_from
 
-# Define your routes and views for Place-Amenity relationship here
-@app_views.route('/places/<place_id>/amenities', methods=['GET', 'POST'])
-def place_amenities(place_id):
-    """
-    Handle GET and POST requests on the list of amenities for a place.
-    """
+mode = getenv("HBNB_TYPE_STORAGE")
+
+
+@app_views.route("/places/<place_id>/amenities", methods=["GET"],
+                 strict_slashes=False)
+@swag_from('documentation/place_amenity/get_places_amenities.yml',
+           methods=['GET'])
+def amenities_from_place(place_id):
+    """this gets all the amenities of a place object"""
     place = storage.get(Place, place_id)
     if place is None:
         abort(404)
+    if mode == "db":
+        return jsonify([amenity.to_dict() for amenity in place.amenities])
+    else:
+        return jsonify([
+            storage.get(Amenity, _id).to_dict() for _id in place.amenity_ids
+        ])
 
-    if request.method == 'GET':
-        amenities = [amenity.to_dict() for amenity in place.amenities]
-        return jsonify(amenities)
 
-    if request.method == 'POST':
-        data = request.get_json()
-        if data is None:
-            return jsonify({'error': 'Not a JSON'}), 400
-        if 'amenity_id' not in data:
-            return jsonify({'error': 'Missing amenity_id'}), 400
-        amenity_id = data['amenity_id']
-        amenity = storage.get(Amenity, amenity_id)
-        if amenity is None:
-            abort(404)
-        if amenity in place.amenities:
-            return jsonify(amenity.to_dict()), 200
-        place.amenities.append(amenity)
-        place.save()
-        return jsonify(amenity.to_dict()), 201
-
-@app_views.route('/places/<place_id>/amenities/<amenity_id>', methods=['DELETE'])
-def delete_place_amenity(place_id, amenity_id):
-    """
-    Handle DELETE requests to remove an amenity from a place.
-    """
+@app_views.route("/places/<place_id>/amenities/<amenity_id>",
+                 methods=["DELETE"], strict_slashes=False)
+@swag_from('documentation/place_amenity/delete_place_amenities.yml',
+           methods=['DELETE'])
+def delete_amenity_from_place(place_id, amenity_id):
+    """this deletes an Amenity object by its id from a Place object"""
     place = storage.get(Place, place_id)
     amenity = storage.get(Amenity, amenity_id)
-
     if place is None or amenity is None:
         abort(404)
+    if mode == "db":
+        if amenity not in place.amenities:
+            abort(404)
+    else:
+        if amenity.id not in place.amenity_id:
+            abort(404)
+    amenity.delete()
+    storage.save()
 
-    if amenity not in place.amenities:
+    return jsonify({})
+
+
+@app_views.route("places/<place_id>/amenities/<amenity_id>", methods=["POST"],
+                 strict_slashes=False)
+@swag_from('documentation/place_amenity/post_place_amenities.yml',
+           methods=['POST'])
+def insert_amenity_in_place(place_id, amenity_id):
+    """this inserts a new amenity object into Place object"""
+    place = storage.get(Place, place_id)
+    amenity = storage.get(Amenity, amenity_id)
+    if place is None or amenity is None:
         abort(404)
-
-    place.amenities.remove(amenity)
-    place.save()
-
-    return jsonify({}), 200
+    if mode == "db":
+        if amenity in place.amenities:
+            return jsonify(amenity.to_dict())
+        else:
+            place.amenities.append(amenity)
+    else:
+        if amenity.id in place.amenity_id:
+            return jsonify(amenity.to_dict())
+        else:
+            place.amenity_id.append(amenity.id)
+    storage.save()
+    return jsonify(amenity.to_dict()), 201

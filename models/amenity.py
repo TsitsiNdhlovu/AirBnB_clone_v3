@@ -4,8 +4,9 @@ import models
 from models.base_model import BaseModel, Base
 from os import getenv
 import sqlalchemy
-from sqlalchemy import Column, String
 from sqlalchemy.orm import relationship
+from sqlalchemy import Column, String, Integer
+from sqlalchemy.ext.declarative import declarative_base
 
 
 class Amenity(BaseModel, Base):
